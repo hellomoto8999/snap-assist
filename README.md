@@ -14,6 +14,12 @@ English | [Italiano](README.it.md)
 
 - macOS 15 or later
 
+## Build and install
+
+From the repository folder, run `./scripts/build-app.sh release`. This creates `dist/SnapAssist.app` and a drag-to-Applications installer at `SnapAssist.dmg`. Open the DMG and drag **SnapAssist.app** onto the **Applications** shortcut inside.
+
+To also copy the app into `~/Applications`, run `./scripts/build-app.sh release install`.
+
 ## Language
 
 The UI follows the macOS language: **English** by default, **Italian** when the system is in Italian. Nothing to configure.
@@ -36,13 +42,19 @@ Without Accessibility the app cannot work. Without Screen Recording it still wor
 ## Usage
 
 1. Snap a window to the left (or right) half with Rectangle or by dragging it to the edge.
-2. After about half a second the free half dims and shows your other windows.
-3. Click the one to place beside it: it is moved, resized and brought to the front.
+2. With the default **Windows 10 Snap Assist** mode, the free half dims and shows your other windows when that space is available.
+3. Click a window to place beside the snapped one: it is moved, resized and brought to the front.
 4. `Esc` or a click outside the panel cancels.
 
-Windows are ordered from frontmost to backmost, like on Windows. The app's own windows and the window that was just snapped are excluded. The panel appears every time a window is **newly** snapped to a half or a **quarter**, even if the other half is already occupied by another window; simply clicking an already snapped window does not reopen it.
+Windows are ordered by recent app activation, with each app's windows kept in their current front-to-back order. The app's own windows and the window that was just snapped are excluded. Other windows from the same app remain eligible. The panel appears only after a window is **newly** snapped; simply clicking an already snapped window does not reopen it.
 
-When you snap a window to a quarter, the picker appears in the first free adjacent quarter (top-right for a top-left window, and so on).
+In **Settings → Behavior → After snapping**, choose how the companion window is selected:
+
+- **Windows 10 Snap Assist** (default): show the picker when the complementary half is free; do not interrupt you if it is occupied. For quarter snaps, show the picker in the first free adjacent quarter.
+- **Ask me**: show the picker after every new half or quarter snap, including when its destination is occupied.
+- **Automatically pair**: move the most recently active eligible window into a free destination without showing the picker. If the destination is occupied or there is no eligible window, do nothing.
+
+Automatic pairing prefers the most recently activated app and then its frontmost eligible visible window. The activation history starts when Snap Assist launches; before it has history, visible front-to-back window order is used. Spaces that are not visible are not candidates.
 
 **Center with Control**: double-tap **Control** (or triple-tap, configured in Settings → Behavior) to center the focused window on its screen. Control used as a modifier (Ctrl+C, Ctrl+click, Ctrl+scroll) does not trigger it.
 

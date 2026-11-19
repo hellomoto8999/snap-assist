@@ -14,6 +14,8 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
     private let dividerSwitch = NSSwitch()
     private let loginSwitch = NSSwitch()
     private let centerPopup = NSPopUpButton()
+    private let selectionPopup = NSPopUpButton()
+    private let selectionDescription = NSTextField(wrappingLabelWithString: "")
     private let layoutPreview = LayoutThumbnailView(layout: LayoutStore.current)
     private let layoutName = NSTextField(labelWithString: "")
     private var refreshTimer: Timer?
@@ -23,11 +25,12 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
     var onDividerChanged: ((Bool) -> Void)?
     var onLoginChanged: ((Bool) -> Void)?
     var onCenterTapsChanged: ((Int) -> Void)?
+    var onSelectionModeChanged: ((SnapSelectionMode) -> Void)?
     var onEditLayout: (() -> Void)?
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 580, height: 810),
+            contentRect: NSRect(x: 0, y: 0, width: 580, height: 880),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -99,6 +102,23 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         behavior.font = .systemFont(ofSize: 13, weight: .semibold)
         behavior.textColor = .secondaryLabelColor
         stack.addArrangedSubview(behavior)
+
+        selectionPopup.removeAllItems()
+        for (index, mode) in SnapSelectionMode.allCases.enumerated() {
+            selectionPopup.addItem(withTitle: L10n.t(mode.titleKey))
+            selectionPopup.lastItem?.tag = index
+        }
+        selectionPopup.target = self
+        selectionPopup.action = #selector(selectionModeChanged)
+        stack.addArrangedSubview(popupRow(
+            title: L10n.t("settings.selection"),
+            popup: selectionPopup
+        ))
+
+        selectionDescription.font = .systemFont(ofSize: 12)
+        selectionDescription.textColor = .secondaryLabelColor
+        selectionDescription.preferredMaxLayoutWidth = 532
+        stack.addArrangedSubview(selectionDescription)
 
         stack.addArrangedSubview(toggleRow(
             title: L10n.t("settings.suggest"),
@@ -325,7 +345,14 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Allinea gli interruttori alle preferenze correnti.
-    func configure(suggest: Bool, previews: Bool, divider: Bool, login: Bool, centerTaps: Int) {
+    func configure(
+        suggest: Bool,
+        previews: Bool,
+        divider: Bool,
+        login: Bool,
+        centerTaps: Int,
+        selectionMode: SnapSelectionMode
+    ) {
         suggestSwitch.state = suggest ? .on : .off
         previewSwitch.state = previews ? .on : .off
         dividerSwitch.state = divider ? .on : .off
@@ -333,6 +360,11 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         if let item = centerPopup.itemArray.first(where: { $0.tag == centerTaps }) {
             centerPopup.select(item)
         }
+        if let index = SnapSelectionMode.allCases.firstIndex(of: selectionMode),
+           selectionPopup.itemArray.indices.contains(index) {
+            selectionPopup.selectItem(at: index)
+        }
+        selectionDescription.stringValue = L10n.t(selectionMode.descriptionKey)
     }
 
     func updateLayout(_ layout: ZoneLayout) {
@@ -389,6 +421,14 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func centerTapsChanged() {
         onCenterTapsChanged?(centerPopup.selectedItem?.tag ?? 0)
+    }
+
+    @objc private func selectionModeChanged() {
+        let index = selectionPopup.indexOfSelectedItem
+        guard SnapSelectionMode.allCases.indices.contains(index) else { return }
+        let mode = SnapSelectionMode.allCases[index]
+        selectionDescription.stringValue = L10n.t(mode.descriptionKey)
+        onSelectionModeChanged?(mode)
     }
 
     @objc private func editLayoutPressed() {

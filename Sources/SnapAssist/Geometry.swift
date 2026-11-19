@@ -33,6 +33,7 @@ struct SnapEvent {
     let screen: NSScreen
     /// Area su cui mostrare il pannello e in cui finirà la finestra scelta.
     let target: NSRect
+    let targetOccupied: Bool
 }
 
 enum ScreenGeometry {

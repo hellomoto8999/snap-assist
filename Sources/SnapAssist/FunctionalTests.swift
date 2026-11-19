@@ -15,6 +15,7 @@ enum FunctionalTests {
 
         geometry()
         windowList()
+        selectionModes()
         systemOverlay()
         layouts()
         centerControl()
@@ -182,14 +183,8 @@ enum FunctionalTests {
         expect(candidates.allSatisfy { $0.pid != myPid }, "candidati senza l'app stessa")
 
         if let first = windows.first {
-            let filtered = WindowList.candidates(excludingFrame: first.frame)
-            let stillPresent = filtered.contains { window in
-                abs(window.frame.minX - first.frame.minX)
-                    + abs(window.frame.minY - first.frame.minY)
-                    + abs(window.frame.width - first.frame.width)
-                    + abs(window.frame.height - first.frame.height) < 40
-            }
-            expect(!stillPresent, "la finestra agganciata è esclusa")
+            let filtered = WindowList.candidates(excludingID: first.id, excludingPID: first.pid)
+            expect(!filtered.contains { $0.id == first.id }, "la finestra agganciata è esclusa per ID")
 
             expect(
                 !WindowList.isExcluded(
@@ -226,6 +221,67 @@ enum FunctionalTests {
             expect(WindowList.isOccupied(first.frame), "area occupata riconosciuta")
         }
         expect(!WindowList.isOccupied(CGRect(x: 100_000, y: 100_000, width: 500, height: 500)), "area fuori schermo non occupata")
+    }
+
+    private static func selectionModes() {
+        group("Modalità di selezione finestre")
+
+        expect(SnapSelectionMode.resolve(nil) == .windowsAssist, "Snap Assist stile Windows è il valore predefinito")
+        expect(SnapSelectionMode.resolve("unknown") == .windowsAssist, "valore salvato non valido usa il valore predefinito")
+        expect(
+            SnapSelectionPolicy.action(mode: .ask, destinationOccupied: true, hasCandidate: true) == .showPicker,
+            "modalità chiedi mostra il pannello anche se la destinazione è occupata"
+        )
+        expect(
+            SnapSelectionPolicy.action(mode: .ask, destinationOccupied: false, hasCandidate: true) == .showPicker,
+            "modalità chiedi mostra il pannello per una destinazione libera"
+        )
+        expect(
+            SnapSelectionPolicy.action(mode: .automatic, destinationOccupied: false, hasCandidate: true) == .automaticallyPlace,
+            "modalità automatica posiziona il candidato in una destinazione libera"
+        )
+        expect(
+            SnapSelectionPolicy.action(mode: .automatic, destinationOccupied: true, hasCandidate: true) == .ignore,
+            "modalità automatica non copre una destinazione occupata"
+        )
+        expect(
+            SnapSelectionPolicy.action(mode: .windowsAssist, destinationOccupied: false, hasCandidate: true) == .showPicker,
+            "Snap Assist mostra la scelta per una destinazione libera"
+        )
+        expect(
+            SnapSelectionPolicy.action(mode: .windowsAssist, destinationOccupied: true, hasCandidate: true) == .ignore,
+            "Snap Assist non interrompe per una destinazione occupata"
+        )
+        expect(
+            SnapSelectionPolicy.action(mode: .windowsAssist, destinationOccupied: false, hasCandidate: false) == .ignore,
+            "nessuna modalità mostra o sposta finestre senza candidati"
+        )
+
+        let target = CGRect(x: 400, y: 200, width: 600, height: 800)
+        let occupyingWindow = VisibleWindow(id: 99, pid: 10, frame: target)
+        expect(
+            WindowList.isOccupied(target, windows: [occupyingWindow]),
+            "occupazione calcolata dallo snapshot condiviso delle finestre"
+        )
+        expect(
+            !WindowList.isOccupied(target, windows: []),
+            "destinazione libera riconosciuta dallo snapshot condiviso"
+        )
+
+        func candidate(_ id: UInt32, _ pid: pid_t) -> WindowCandidate {
+            WindowCandidate(
+                id: CGWindowID(id),
+                pid: pid,
+                appName: "App \(pid)",
+                title: "Window \(id)",
+                frame: .zero,
+                icon: nil
+            )
+        }
+
+        let windows = [candidate(1, 10), candidate(2, 10), candidate(3, 20)]
+        let ordered = WindowList.prioritize(windows, recentProcessIDs: [20, 10])
+        expect(ordered.map(\.id) == [3, 1, 2], "recency orders apps while preserving their window stacking order")
     }
 
     // MARK: - Mission Control
@@ -402,7 +458,8 @@ enum FunctionalTests {
             frame: snapped,
             zone: .leftHalf,
             screen: screen,
-            target: target
+            target: target,
+            targetOccupied: false
         )
         let shown = controller.present(for: event, thumbnails: false)
         guard expect(shown, "pannello mostrato") else { return }
@@ -577,13 +634,14 @@ enum FunctionalTests {
 
         guard let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-              let window = AX.focusedWindow(pid: app.processIdentifier),
-              let frame = AX.frame(window) else {
+              let focused = AX.focusedWindowWithFrame(pid: app.processIdentifier) else {
             skip("lettura finestra in primo piano")
             skip("spostamento e ripristino finestra")
             return
         }
 
+        let window = focused.window
+        let frame = focused.frame
         expect(frame.width > 0 && frame.height > 0, "frame della finestra in primo piano")
         expect(AX.window(pid: app.processIdentifier, matching: frame) != nil, "finestra ritrovata per frame")
 

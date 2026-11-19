@@ -14,6 +14,12 @@ Funziona con qualsiasi metodo di snap: **Rectangle**, Magnet, le scorciatoie da 
 
 - macOS 15 o successivo
 
+## Compilazione e installazione
+
+Dalla cartella del repository esegui `./scripts/build-app.sh release`. Crea `dist/SnapAssist.app` e il programma di installazione `SnapAssist.dmg`: apri il DMG e trascina **SnapAssist.app** sull'icona **Applications** al suo interno.
+
+Per copiare anche l'app in `~/Applications`, esegui `./scripts/build-app.sh release install`.
+
 ## Lingua
 
 L'interfaccia segue la lingua di macOS: **italiano** se il sistema è in italiano, **inglese** per tutte le altre lingue. Non serve configurare nulla.
@@ -36,13 +42,19 @@ Senza Accessibilità l'app non può funzionare. Senza Registrazione schermo funz
 ## Uso
 
 1. Aggancia una finestra a sinistra (o a destra) con Rectangle o trascinandola al bordo.
-2. Dopo circa mezzo secondo la metà libera si scurisce e mostra le altre finestre.
+2. Con la modalità predefinita **Snap Assist di Windows 10**, la metà libera si scurisce e mostra le altre finestre quando lo spazio è disponibile.
 3. Clicca quella da affiancare: viene spostata, ridimensionata e portata in primo piano.
 4. `Esc` o un clic fuori dal pannello annullano.
 
-Le finestre sono ordinate dalla più in primo piano alla più indietro, come in Windows. Sono escluse le finestre dell'app stessa e quella appena agganciata. Il pannello compare ogni volta che una finestra viene **appena** agganciata a metà o a un **quarto** di schermo, anche se l'altra metà è già occupata da un'altra finestra; un semplice clic su una finestra già affiancata non lo riapre.
+Le finestre sono ordinate in base all'attivazione recente delle app; all'interno di ogni app mantengono l'ordine davanti-dietro. Sono escluse le finestre dell'app stessa e quella appena agganciata. Le altre finestre della stessa app restano selezionabili. Il pannello compare solo quando una finestra viene **appena** agganciata; un semplice clic su una finestra già affiancata non lo riapre.
 
-Quando agganci una finestra a un quarto, il pannello compare nel primo quarto adiacente libero (in alto a destra per una finestra in alto a sinistra, e così via).
+In **Impostazioni → Comportamento → Dopo l'affiancamento** puoi scegliere:
+
+- **Snap Assist di Windows 10** (predefinita): mostra il pannello se la metà opposta è libera; non interrompe se è occupata. Con gli snap agli angoli, usa il primo quarto adiacente libero.
+- **Chiedimelo**: mostra il pannello dopo ogni nuovo snap a metà o a quarto, anche se la destinazione è occupata.
+- **Affianca automaticamente**: sposta la finestra idonea dell'app attivata più di recente in una destinazione libera, senza mostrare il pannello. Se la destinazione è occupata o non ci sono finestre idonee, non fa nulla.
+
+L'affiancamento automatico preferisce l'app attivata più di recente e poi la sua finestra visibile più in primo piano. La cronologia inizia quando si avvia Snap Assist; prima che sia disponibile, viene usato l'ordine davanti-dietro delle finestre visibili. Le finestre su altri Space non sono candidate.
 
 **Centra con Control**: premi **Control** due volte (o tre, configurabile in Impostazioni → Comportamento) per centrare la finestra in primo piano sul suo schermo. Control usato come modificatore (Ctrl+C, Ctrl+clic, Ctrl+scroll) non attiva il gesto.
 

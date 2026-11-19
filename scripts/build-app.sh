@@ -1,8 +1,8 @@
 #!/bin/bash
-# Compila Snap Assist e crea un bundle .app autonomo.
+# Compila Snap Assist, crea un bundle .app autonomo e genera un DMG installabile.
 #
-#   ./scripts/build-app.sh              # build release in dist/
-#   ./scripts/build-app.sh debug        # build debug
+#   ./scripts/build-app.sh                   # build release + SnapAssist.dmg
+#   ./scripts/build-app.sh debug             # build debug + SnapAssist.dmg
 #   ./scripts/build-app.sh release install   # copia anche in ~/Applications
 set -euo pipefail
 
@@ -64,6 +64,23 @@ touch "$APP"
 
 echo "✓ Creato: $APP"
 
+DMG="$ROOT/SnapAssist.dmg"
+DMG_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/snapassist-dmg.XXXXXX")"
+trap 'rm -rf "$DMG_STAGE"' EXIT
+
+echo "▸ Creo il DMG installabile…"
+ditto "$APP" "$DMG_STAGE/SnapAssist.app"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create \
+    -volname "Snap Assist" \
+    -srcfolder "$DMG_STAGE" \
+    -ov \
+    -format UDZO \
+    -imagekey zlib-level=9 \
+    "$DMG"
+hdiutil verify "$DMG"
+echo "✓ Creato: $DMG"
+
 if [ "$INSTALL" = "install" ]; then
     DEST="$HOME/Applications/SnapAssist.app"
     mkdir -p "$HOME/Applications"
@@ -74,3 +91,4 @@ if [ "$INSTALL" = "install" ]; then
 else
     echo "  Apri con: open \"$APP\""
 fi
+echo "  Per installare: apri il DMG e trascina SnapAssist.app su Applications."

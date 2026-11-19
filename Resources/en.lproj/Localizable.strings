@@ -34,6 +34,13 @@
 
 "settings.heading" = "Settings";
 "settings.behavior" = "Behavior";
+"settings.selection" = "After snapping";
+"settings.selection.ask" = "Ask me";
+"settings.selection.ask.detail" = "Show the window picker after every new snap, even when the destination is occupied.";
+"settings.selection.automatic" = "Automatically pair";
+"settings.selection.automatic.detail" = "Move the most recently active eligible window into a free destination. Do nothing if it is occupied.";
+"settings.selection.windowsAssist" = "Windows 10 Snap Assist";
+"settings.selection.windowsAssist.detail" = "Show the picker for a free destination, like Windows Snap Assist. For quarter snaps, use the first free adjacent quarter.";
 "settings.suggest" = "Suggest the window to snap";
 "settings.previews" = "Show window previews";
 "settings.divider" = "Resize divider between side-by-side windows";

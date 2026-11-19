@@ -135,16 +135,13 @@ final class ZoneDragController {
             fail("app non regular")
             return
         }
-        guard let window = AX.focusedWindow(pid: app.processIdentifier) else {
-            fail("nessuna finestra in primo piano")
-            return
-        }
-        guard let raw = AX.frame(window) else {
+        guard let focused = AX.focusedWindowWithFrame(pid: app.processIdentifier) else {
             fail("frame non leggibile")
             return
         }
 
-        let frame = ScreenGeometry.appKit(fromAccessibility: raw)
+        let window = focused.window
+        let frame = ScreenGeometry.appKit(fromAccessibility: focused.frame)
         guard mouse.x >= frame.minX,
               mouse.x <= frame.maxX,
               mouse.y <= frame.maxY,

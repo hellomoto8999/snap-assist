@@ -22,13 +22,20 @@ final class PickerController {
     private var localMonitor: Any?
 
     @discardableResult
-    func present(for event: SnapEvent, thumbnails: Bool, items: [WindowCandidate]? = nil) -> Bool {
+    func present(
+        for event: SnapEvent,
+        thumbnails: Bool,
+        items: [WindowCandidate]? = nil,
+        recentProcessIDs: [pid_t] = []
+    ) -> Bool {
         dismiss(silently: true)
 
         let excluded = ScreenGeometry.accessibility(fromAppKit: event.frame)
         let candidates = items ?? WindowList.candidates(
             excludingID: event.windowID,
-            excludingFrame: event.windowID == nil ? excluded : nil
+            excludingPID: event.pid,
+            excludingFrame: event.windowID == nil ? excluded : nil,
+            recentProcessIDs: recentProcessIDs
         )
         guard !candidates.isEmpty else { return false }
 
@@ -75,13 +82,7 @@ final class PickerController {
         panel.contentView = content
         panel.setFrame(frame, display: true)
         content.layoutSubtreeIfNeeded()
-        panel.alphaValue = 0
         panel.orderFrontRegardless()
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
-            panel.animator().alphaValue = 1
-        }
 
         self.panel = panel
         self.view = content
@@ -106,13 +107,8 @@ final class PickerController {
         self.panel = nil
         self.view = nil
 
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.1
-            panel.animator().alphaValue = 0
-        }, completionHandler: {
-            panel.orderOut(nil)
-            panel.contentView = nil
-        })
+        panel.orderOut(nil)
+        panel.contentView = nil
 
         if !silently { onDismiss?() }
 

@@ -120,10 +120,10 @@ final class CenterWindowController {
               let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
               app.activationPolicy == .regular,
-              let window = AX.focusedWindow(pid: app.processIdentifier),
-              let raw = AX.frame(window) else { return }
+              let focused = AX.focusedWindowWithFrame(pid: app.processIdentifier) else { return }
 
-        let frame = ScreenGeometry.appKit(fromAccessibility: raw)
+        let window = focused.window
+        let frame = ScreenGeometry.appKit(fromAccessibility: focused.frame)
         let center = NSPoint(x: frame.midX, y: frame.midY)
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) ?? NSScreen.main else {
             return

@@ -114,27 +114,39 @@ enum WindowList {
         return result
     }
 
-    /// Finestre visibili, dalla più in primo piano alla più indietro.
-    /// Esclude le finestre dell'app stessa e quella appena agganciata, per ID
-    /// (non per frame: un'altra finestra può trovarsi sullo stesso rettangolo).
+    static func isOccupied(
+        _ rect: CGRect,
+        windows: [VisibleWindow],
+        tolerance: CGFloat = 26
+    ) -> Bool {
+        windows.contains { window in
+            occupies(window.frame, rect: rect, tolerance: tolerance)
+        }
+    }
+
+    /// Finestre visibili ordinate per attivazione recente dell'app; l'ordine
+    /// davanti-dietro resta il criterio per le finestre della stessa app.
+    /// Esclude l'app stessa e la finestra agganciata, preferendo il suo ID.
     static func candidates(
         excludingID: CGWindowID? = nil,
+        excludingPID: pid_t? = nil,
         excludingFrame: CGRect? = nil,
-        limit: Int = 9
+        limit: Int = 9,
+        recentProcessIDs: [pid_t] = []
     ) -> [WindowCandidate] {
+        let maximum = max(0, limit)
+        guard maximum > 0 else { return [] }
         guard let raw = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements],
             kCGNullWindowID
         ) as? [[String: Any]] else { return [] }
 
         let myPid = ProcessInfo.processInfo.processIdentifier
-        var appCache: [pid_t: (name: String, icon: NSImage?)] = [:]
-        var seen = Set<String>()
-        var result: [WindowCandidate] = []
+        var seen = Set<CGWindowID>()
+        var records: [(zOrder: Int, id: CGWindowID, pid: pid_t, frame: CGRect, title: String)] = []
+        var excludedFrameFallback = false
 
-        for info in raw {
-            if result.count >= limit { break }
-
+        for (zOrder, info) in raw.enumerated() {
             guard let layer = number(info[kCGWindowLayer as String])?.intValue, layer == 0 else { continue }
             guard let alpha = number(info[kCGWindowAlpha as String])?.doubleValue, alpha > 0.05 else { continue }
             guard let pid = number(info[kCGWindowOwnerPID as String])?.int32Value, pid != myPid else { continue }
@@ -142,30 +154,58 @@ enum WindowList {
             guard let frame = bounds(from: info) else { continue }
             guard frame.width >= 180, frame.height >= 120 else { continue }
 
-            guard !isExcluded(
-                id: id,
-                frame: frame,
-                excludingID: excludingID,
-                excludingFrame: excludingFrame
-            ) else { continue }
+            if let excludingID {
+                if id == excludingID { continue }
+            } else if let excludingFrame, !excludedFrameFallback,
+                      excludingPID == nil || pid == excludingPID,
+                      isExcluded(
+                        id: id,
+                        frame: frame,
+                        excludingID: nil,
+                        excludingFrame: excludingFrame
+                      ) {
+                excludedFrameFallback = true
+                continue
+            }
 
-            guard let app = appInfo(pid: pid, cache: &appCache) else { continue }
+            guard seen.insert(id).inserted else { continue }
 
-            let key = "\(pid)|\(Int(frame.minX))|\(Int(frame.minY))|\(Int(frame.width))|\(Int(frame.height))"
-            guard !seen.contains(key) else { continue }
-            seen.insert(key)
-
-            result.append(WindowCandidate(
+            records.append((
+                zOrder: zOrder,
                 id: id,
                 pid: pid,
-                appName: app.name,
-                title: (info[kCGWindowName as String] as? String) ?? "",
                 frame: frame,
-                icon: app.icon
+                title: (info[kCGWindowName as String] as? String) ?? ""
             ))
         }
 
-        return result
+        let recency = Dictionary(
+            recentProcessIDs.enumerated().map { ($0.element, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let ordered = records.sorted { lhs, rhs in
+            let leftRank = recency[lhs.pid] ?? Int.max
+            let rightRank = recency[rhs.pid] ?? Int.max
+            if leftRank != rightRank { return leftRank < rightRank }
+            return lhs.zOrder < rhs.zOrder
+        }
+
+        var appCache: [pid_t: (name: String, icon: NSImage?)] = [:]
+        var candidates: [WindowCandidate] = []
+        candidates.reserveCapacity(maximum)
+        for record in ordered {
+            guard let app = appInfo(pid: record.pid, cache: &appCache) else { continue }
+            candidates.append(WindowCandidate(
+                id: record.id,
+                pid: record.pid,
+                appName: app.name,
+                title: record.title,
+                frame: record.frame,
+                icon: app.icon
+            ))
+            if candidates.count >= maximum { break }
+        }
+        return candidates
     }
 
     private static func number(_ value: Any?) -> NSNumber? {
@@ -225,12 +265,74 @@ enum WindowList {
             guard let pid = number(info[kCGWindowOwnerPID as String])?.int32Value, pid != myPid else { continue }
             guard let frame = bounds(from: info) else { continue }
 
-            let horizontal = abs(frame.minX - rect.minX) <= max(tolerance, rect.width * 0.06)
-                && abs(frame.width - rect.width) <= max(tolerance, rect.width * 0.06)
-            let vertical = abs(frame.minY - rect.minY) <= max(tolerance, rect.height * 0.06)
-                && abs(frame.height - rect.height) <= max(tolerance, rect.height * 0.06)
-            if horizontal && vertical { return true }
+            if occupies(frame, rect: rect, tolerance: tolerance) { return true }
         }
         return false
+    }
+
+    static func prioritize(
+        _ candidates: [WindowCandidate],
+        recentProcessIDs: [pid_t]
+    ) -> [WindowCandidate] {
+        let recency = Dictionary(
+            recentProcessIDs.enumerated().map { ($0.element, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return candidates.enumerated()
+            .sorted { lhs, rhs in
+                let leftRank = recency[lhs.element.pid] ?? Int.max
+                let rightRank = recency[rhs.element.pid] ?? Int.max
+                if leftRank != rightRank { return leftRank < rightRank }
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
+
+    private static func occupies(_ frame: CGRect, rect: CGRect, tolerance: CGFloat) -> Bool {
+        let horizontal = abs(frame.minX - rect.minX) <= max(tolerance, rect.width * 0.06)
+            && abs(frame.width - rect.width) <= max(tolerance, rect.width * 0.06)
+        let vertical = abs(frame.minY - rect.minY) <= max(tolerance, rect.height * 0.06)
+            && abs(frame.height - rect.height) <= max(tolerance, rect.height * 0.06)
+        return horizontal && vertical
+    }
+}
+
+final class WindowActivationHistory {
+    private let notificationCenter = NSWorkspace.shared.notificationCenter
+    private var observer: NSObjectProtocol?
+    private var processIDs: [pid_t] = []
+    private let maximumHistory = 32
+
+    var recentProcessIDs: [pid_t] {
+        processIDs
+    }
+
+    func start() {
+        stop()
+        observer = notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+                return
+            }
+            self?.record(app.processIdentifier)
+        }
+    }
+
+    func stop() {
+        if let observer {
+            notificationCenter.removeObserver(observer)
+            self.observer = nil
+        }
+    }
+
+    private func record(_ pid: pid_t) {
+        processIDs.removeAll { $0 == pid }
+        processIDs.insert(pid, at: 0)
+        if processIDs.count > maximumHistory {
+            processIDs.removeLast(processIDs.count - maximumHistory)
+        }
     }
 }

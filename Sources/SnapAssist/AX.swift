@@ -43,14 +43,26 @@ enum AX {
 
     /// Finestra in primo piano dell'app indicata.
     static func focusedWindow(pid: pid_t) -> AXUIElement? {
+        focusedWindowWithFrame(pid: pid)?.window
+    }
+
+    /// Prova le finestre in ordine di priorità e ignora gli elementi AX non leggibili.
+    static func focusedWindowWithFrame(pid: pid_t) -> (window: AXUIElement, frame: CGRect)? {
         let application = AXUIElementCreateApplication(pid)
         for name in [kAXFocusedWindowAttribute, kAXMainWindowAttribute] {
             if let value = attribute(application, name), CFGetTypeID(value) == AXUIElementGetTypeID() {
-                return (value as! AXUIElement)
+                let window = value as! AXUIElement
+                if let windowFrame = frame(window) {
+                    return (window, windowFrame)
+                }
             }
         }
         if let windows = attribute(application, kAXWindowsAttribute) as? [AXUIElement] {
-            return windows.first
+            for window in windows {
+                if let windowFrame = frame(window) {
+                    return (window, windowFrame)
+                }
+            }
         }
         return nil
     }

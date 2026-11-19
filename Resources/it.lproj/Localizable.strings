@@ -34,6 +34,13 @@
 
 "settings.heading" = "Impostazioni";
 "settings.behavior" = "Comportamento";
+"settings.selection" = "Dopo l'affiancamento";
+"settings.selection.ask" = "Chiedimelo";
+"settings.selection.ask.detail" = "Mostra il pannello dopo ogni nuovo affiancamento, anche se la destinazione è occupata.";
+"settings.selection.automatic" = "Affianca automaticamente";
+"settings.selection.automatic.detail" = "Sposta la finestra idonea usata più di recente in una destinazione libera. Non fare nulla se è occupata.";
+"settings.selection.windowsAssist" = "Snap Assist di Windows 10";
+"settings.selection.windowsAssist.detail" = "Mostra il pannello per una destinazione libera, come Snap Assist di Windows. Con gli angoli usa il primo quarto adiacente libero.";
 "settings.suggest" = "Suggerisci la finestra da affiancare";
 "settings.previews" = "Mostra anteprime delle finestre";
 "settings.divider" = "Barra di ridimensionamento tra finestre affiancate";

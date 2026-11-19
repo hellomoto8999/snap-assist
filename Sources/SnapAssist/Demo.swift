@@ -13,11 +13,12 @@ enum Demo {
         guard let screen = NSScreen.screens.first,
               let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-              let window = AX.focusedWindow(pid: app.processIdentifier),
-              let original = AX.frame(window) else {
+              let focused = AX.focusedWindowWithFrame(pid: app.processIdentifier) else {
             print("Nessuna finestra da spostare")
             return
         }
+        let window = focused.window
+        let original = focused.frame
 
         let base = screen.visibleFrame
         let target = ScreenGeometry.accessibility(fromAppKit: NSRect(
@@ -80,7 +81,8 @@ enum Demo {
             frame: snapped,
             zone: .leftHalf,
             screen: screen,
-            target: target
+            target: target,
+            targetOccupied: false
         )
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {

@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let zones = ZoneDragController()
     private let centerWindow = CenterWindowController()
     private let permissions = PermissionsWindowController()
+    private let activationHistory = WindowActivationHistory()
     private var layoutEditor: LayoutEditorWindowController?
 
     private var statusItem: NSStatusItem?
@@ -42,11 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set { UserDefaults.standard.set(newValue, forKey: "centerTaps") }
     }
 
+    private var snapSelectionMode: SnapSelectionMode {
+        get { SnapSelectionMode.resolve(UserDefaults.standard.string(forKey: "snapSelectionMode")) }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "snapSelectionMode") }
+    }
+
     // MARK: - Avvio
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         setupCallbacks()
+        activationHistory.start()
 
         monitor.isEnabled = enabled
         monitor.start()
@@ -66,7 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             previews: thumbnailsEnabled,
             divider: dividerEnabled,
             login: LoginItem.isEnabled || LoginItem.requiresApproval,
-            centerTaps: centerTaps
+            centerTaps: centerTaps,
+            selectionMode: snapSelectionMode
         )
         permissions.updateLayout(LayoutStore.current)
         startTrustTimer()
@@ -82,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         trustTimer?.invalidate()
+        activationHistory.stop()
         monitor.stop()
         divider.stop()
         zones.stop()
@@ -99,10 +108,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupCallbacks() {
         monitor.onSnap = { [weak self] event in
             guard let self else { return false }
-            self.requestScreenRecordingIfNeeded()
             self.divider.isSuspended = true
-            let shown = self.picker.present(for: event, thumbnails: self.thumbnailsEnabled)
-            if !shown { self.divider.isSuspended = false }
+            let mode = self.snapSelectionMode
+            if event.targetOccupied && mode != .ask {
+                self.divider.isSuspended = false
+                return false
+            }
+
+            let excluded = ScreenGeometry.accessibility(fromAppKit: event.frame)
+            let candidates = WindowList.candidates(
+                excludingID: event.windowID,
+                excludingPID: event.pid,
+                excludingFrame: event.windowID == nil ? excluded : nil,
+                recentProcessIDs: self.activationHistory.recentProcessIDs
+            )
+            let action = SnapSelectionPolicy.action(
+                mode: mode,
+                destinationOccupied: event.targetOccupied,
+                hasCandidate: !candidates.isEmpty
+            )
+            let shown: Bool
+            var automaticMoveStarted = false
+            switch action {
+            case .showPicker:
+                self.requestScreenRecordingIfNeeded()
+                shown = self.picker.present(
+                    for: event,
+                    thumbnails: self.thumbnailsEnabled,
+                    items: candidates
+                )
+            case .automaticallyPlace:
+                automaticMoveStarted = true
+                self.move(candidates[0], to: event.target) { [weak self] in
+                    self?.divider.isSuspended = false
+                }
+                shown = false
+            case .ignore:
+                shown = false
+            }
+            if !shown && !automaticMoveStarted { self.divider.isSuspended = false }
             return shown
         }
 
@@ -159,6 +203,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.refreshMenuState()
         }
 
+        permissions.onSelectionModeChanged = { [weak self] mode in
+            guard let self else { return }
+            self.snapSelectionMode = mode
+            self.refreshMenuState()
+        }
+
         permissions.onLoginChanged = { [weak self] value in
             self?.setLogin(value)
         }
@@ -203,7 +253,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 previews: thumbnailsEnabled,
                 divider: dividerEnabled,
                 login: LoginItem.isEnabled || LoginItem.requiresApproval,
-                centerTaps: centerTaps
+                centerTaps: centerTaps,
+                selectionMode: snapSelectionMode
             )
             let alert = NSAlert()
             alert.alertStyle = .warning
@@ -228,25 +279,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Spostamento finestra
 
-    private func move(_ candidate: WindowCandidate, to target: NSRect) {
+    private func move(
+        _ candidate: WindowCandidate,
+        to target: NSRect,
+        onFinished: (() -> Void)? = nil
+    ) {
         let targetFrame = ScreenGeometry.accessibility(fromAppKit: target)
         let pid = candidate.pid
         let cgFrame = candidate.frame
 
-        // Lasciamo al pannello il tempo di sparire prima di animare la finestra.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
-            guard let self else { return }
-            guard let window = AX.window(pid: pid, matching: cgFrame) else {
-                NSSound.beep()
-                return
-            }
-
-            AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
-            AX.setFrame(window, targetFrame)
-            AX.activate(window)
-            NSRunningApplication(processIdentifier: pid)?.activate()
-            self.monitor.noteProgrammaticMove(pid: pid, window: window)
+        guard let window = AX.window(pid: pid, matching: cgFrame) else {
+            NSSound.beep()
+            onFinished?()
+            return
         }
+
+        AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+        AX.setFrame(window, targetFrame)
+        AX.activate(window)
+        NSRunningApplication(processIdentifier: pid)?.activate()
+        monitor.noteProgrammaticMove(pid: pid, window: window)
+        onFinished?()
     }
 
     // MARK: - Permessi
@@ -397,7 +450,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             previews: thumbnailsEnabled,
             divider: dividerEnabled,
             login: LoginItem.isEnabled || LoginItem.requiresApproval,
-            centerTaps: centerTaps
+            centerTaps: centerTaps,
+            selectionMode: snapSelectionMode
         )
     }
 
